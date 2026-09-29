@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  },
   "scripts": {
     "dev": "node --env-file=.env --import tsx --watch src/local.ts",
     "build": "tsc --noEmit",
