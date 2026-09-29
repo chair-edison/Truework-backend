@@ -40,9 +40,18 @@ export async function requireAuth(c: Context<AppEnv>, next: Next) {
   c.set('db', client);
   await next();
 }
-export function assertDb(error: { message: string } | null) {
+export function assertDb(
+  error: { message: string; code?: string; statusCode?: string | number } | null,
+) {
   if (error) {
-    console.error(JSON.stringify({ event: 'db_error', category: 'query' }));
+    console.error(
+      JSON.stringify({
+        event: 'db_error',
+        category: 'query',
+        code: error.code,
+        status_code: error.statusCode,
+      }),
+    );
     throw new ApiError(
       503,
       'DATABASE_UNAVAILABLE',

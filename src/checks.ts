@@ -199,6 +199,7 @@ async function processCheck(
   ref: string,
   language: Language,
 ) {
+  let stage = 'mark_extracting';
   const update = async (status: string, extra: any = {}) => {
     const r = await client
       .from('job_checks')
@@ -213,6 +214,7 @@ async function processCheck(
   try {
     await update('EXTRACTING');
     await audit('EXTRACTING');
+    stage = 'load_input';
     let input: any = { type };
     if (type === 'TEXT') input.text = ref;
     if (type === 'URL') {
@@ -224,8 +226,10 @@ async function processCheck(
       input.image = new Uint8Array(await file.data.arrayBuffer());
       input.mime = 'image/jpeg';
     }
+    stage = 'extract';
     const result = await extract(input, language);
     if (type === 'URL') result.value.source_url = ref;
+    stage = 'save_extraction';
     await update('VERIFYING', {
       extracted_data: result.value,
       model_name: result.model,
@@ -234,8 +238,10 @@ async function processCheck(
       llm_usage: result.usage,
     });
     await audit('VERIFYING', { model: result.model, prompt_version: '1' });
+    stage = 'registry';
     const reg = await registry(client, result.value);
     const decision = assess(result.value, reg, language);
+    stage = 'mark_explaining';
     await update('EXPLAINING');
     await audit('DECISION', {
       status: decision.status,
@@ -243,6 +249,7 @@ async function processCheck(
       risks: decision.risks.map((r) => r.risk_code),
     });
     const explanation = await explain(result.value, decision, language);
+    stage = 'save_evidence';
     const ev = await client
       .from('evidence')
       .upsert(
@@ -260,12 +267,14 @@ async function processCheck(
       explanation: r.explanation,
       evidence_ids: r.evidence_ids.map((eid) => ids.get(old.get(eid) || '')).filter(Boolean),
     }));
+    stage = 'save_risks';
     if (riskRows.length) {
       const rr = await client
         .from('job_check_risks')
         .upsert(riskRows, { onConflict: 'job_check_id,risk_code' });
       assertDb(rr.error);
     }
+    stage = 'complete';
     await update('COMPLETED', {
       verification_status: decision.status,
       verification_summary: decision.summary,
@@ -278,7 +287,7 @@ async function processCheck(
     await audit('COMPLETED');
   } catch (e) {
     const code = e instanceof ApiError ? e.code : 'PROCESSING_FAILED';
-    console.error(JSON.stringify({ event: 'check_failed', check_id: id, code }));
+    console.error(JSON.stringify({ event: 'check_failed', check_id: id, stage, code }));
     await update('FAILED', { failure_code: code, completed_at: new Date().toISOString() }).catch(
       () => {},
     );
