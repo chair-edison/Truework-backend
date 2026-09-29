@@ -122,6 +122,20 @@ export const openapi = {
     '/job-checks': {
       post: {
         summary: 'Create a check. Optional Idempotency-Key header.',
+        description:
+          'Human-readable report fields use the requested language. Status and risk codes remain stable. The original raw_text is retained internally and omitted from the response.',
+        parameters: [
+          {
+            in: 'query',
+            name: 'language',
+            required: false,
+            schema: {
+              type: 'string',
+              enum: ['english', 'korean', 'vietnamese'],
+              default: 'english',
+            },
+          },
+        ],
         security: [{ bearerAuth: [] }],
         requestBody: {
           content: { 'application/json': { schema: { $ref: '#/components/schemas/CheckCreate' } } },
@@ -131,7 +145,7 @@ export const openapi = {
     },
     '/job-checks/{id}': {
       get: {
-        summary: 'Get own check status and result',
+        summary: 'Get own check status and result in the language selected at creation',
         security: [{ bearerAuth: [] }],
         responses: { '200': { description: 'Progress, failure, or completed report' } },
       },

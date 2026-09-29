@@ -4,6 +4,7 @@ import { waitUntil } from '@vercel/functions';
 import { createHash } from 'node:crypto';
 import { ApiError, assertDb, invalid, rateLimit, requireAuth, uuid, type AppEnv } from './core.js';
 import { assess, explain, extract, fetchOffer, registry } from './verify.js';
+import { parseLanguage, type Language } from './language.js';
 
 export const uploads = new Hono<AppEnv>(),
   checks = new Hono<AppEnv>();
@@ -61,6 +62,7 @@ uploads.post('/job-checks', async (c) => {
 });
 
 checks.post('/', async (c) => {
+  const language = parseLanguage(c.req.query('language'));
   await rateLimit(c, 'check');
   const raw = await c.req.text();
   if (raw.length > 21000) throw new ApiError(413, 'BODY_TOO_LARGE', '입력이 너무 깁니다.');
@@ -95,7 +97,12 @@ checks.post('/', async (c) => {
   if (key && !/^[A-Za-z0-9_-]{8,128}$/.test(key)) throw invalid('Idempotency-Key');
   const requestHash = createHash('sha256')
     .update(
-      JSON.stringify({ type, content: body.content || null, upload_id: body.upload_id || null }),
+      JSON.stringify({
+        type,
+        content: body.content || null,
+        upload_id: body.upload_id || null,
+        language,
+      }),
     )
     .digest('hex');
   if (key) {
@@ -110,7 +117,7 @@ checks.post('/', async (c) => {
       if (previous.data.request_hash !== requestHash)
         throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', '이미 사용된 요청 키입니다.');
       return c.json(
-        { check_id: previous.data.id, status: previous.data.status, poll_after_ms: 2000 },
+        { check_id: previous.data.id, status: previous.data.status, language, poll_after_ms: 2000 },
         202,
       );
     }
@@ -138,6 +145,7 @@ checks.post('/', async (c) => {
       id,
       user_id: userId,
       input_type: type,
+      language,
       input_ref: inputRef,
       idempotency_key: key || null,
       request_hash: requestHash,
@@ -156,7 +164,10 @@ checks.post('/', async (c) => {
       if (p.data) {
         if (p.data.request_hash !== requestHash)
           throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', '이미 사용된 요청 키입니다.');
-        return c.json({ check_id: p.data.id, status: p.data.status, poll_after_ms: 2000 }, 202);
+        return c.json(
+          { check_id: p.data.id, status: p.data.status, language, poll_after_ms: 2000 },
+          202,
+        );
       }
     }
     assertDb(insert.error);
@@ -175,12 +186,19 @@ checks.post('/', async (c) => {
       throw new ApiError(409, 'UPLOAD_UNAVAILABLE', '업로드가 이미 사용되었습니다.');
     }
   }
-  const task = processCheck(client, id, userId, type, inputRef);
+  const task = processCheck(client, id, userId, type, inputRef, language);
   if (process.env.VERCEL) waitUntil(task);
   else void task;
-  return c.json({ check_id: id, status: 'QUEUED', poll_after_ms: 2000 }, 202);
+  return c.json({ check_id: id, status: 'QUEUED', language, poll_after_ms: 2000 }, 202);
 });
-async function processCheck(client: any, id: string, userId: string, type: string, ref: string) {
+async function processCheck(
+  client: any,
+  id: string,
+  userId: string,
+  type: string,
+  ref: string,
+  language: Language,
+) {
   const update = async (status: string, extra: any = {}) => {
     const r = await client
       .from('job_checks')
@@ -206,7 +224,7 @@ async function processCheck(client: any, id: string, userId: string, type: strin
       input.image = new Uint8Array(await file.data.arrayBuffer());
       input.mime = 'image/jpeg';
     }
-    const result = await extract(input);
+    const result = await extract(input, language);
     if (type === 'URL') result.value.source_url = ref;
     await update('VERIFYING', {
       extracted_data: result.value,
@@ -217,14 +235,14 @@ async function processCheck(client: any, id: string, userId: string, type: strin
     });
     await audit('VERIFYING', { model: result.model, prompt_version: '1' });
     const reg = await registry(client, result.value);
-    const decision = assess(result.value, reg);
+    const decision = assess(result.value, reg, language);
     await update('EXPLAINING');
     await audit('DECISION', {
       status: decision.status,
       policy_version: decision.policy_version,
       risks: decision.risks.map((r) => r.risk_code),
     });
-    const explanation = await explain(result.value, decision);
+    const explanation = await explain(result.value, decision, language);
     const ev = await client
       .from('evidence')
       .upsert(
@@ -273,7 +291,7 @@ checks.get('/:id', async (c) => {
   const row = await client
     .from('job_checks')
     .select(
-      'id,input_type,status,extracted_data,verification_status,verification_summary,explanation,disclaimer,safety_guidance,failure_code,created_at,updated_at,completed_at,policy_version',
+      'id,input_type,language,status,extracted_data,verification_status,verification_summary,explanation,disclaimer,safety_guidance,failure_code,created_at,updated_at,completed_at,policy_version',
     )
     .eq('id', id)
     .eq('user_id', c.get('userId'))
@@ -284,6 +302,7 @@ checks.get('/:id', async (c) => {
     return c.json({
       check_id: id,
       status: 'FAILED',
+      language: row.data.language,
       failure_code: row.data.failure_code,
       retryable: [
         'EXTRACTION_FAILED',
@@ -297,6 +316,7 @@ checks.get('/:id', async (c) => {
     return c.json({
       check_id: id,
       status: row.data.status,
+      language: row.data.language,
       updated_at: row.data.updated_at,
       poll_after_ms: 2000,
     });
@@ -306,10 +326,12 @@ checks.get('/:id', async (c) => {
   ]);
   assertDb(ev.error);
   assertDb(risks.error);
+  const { raw_text: _rawText, ...extraction } = row.data.extracted_data;
   return c.json({
     check_id: id,
     status: 'COMPLETED',
-    extraction: row.data.extracted_data,
+    language: row.data.language,
+    extraction,
     verification: {
       status: row.data.verification_status,
       summary: row.data.verification_summary,
