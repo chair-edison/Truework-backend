@@ -9,6 +9,8 @@ Hono API built from the supplied Truework backend requirements. Local runtime: N
 3. Copy `.env.example` to `.env` and set the local Supabase URL and service role key, OpenAI key, allowed frontend origins, and a random `CRON_SECRET`. Never expose the service role key to the frontend.
 4. Run `npm run dev`, then `npm run build`, `npm test`, and `npm run smoke`. For authenticated smoke checks, set `SMOKE_TOKEN` to a Supabase user access token. API docs: `http://localhost:8787/api/v1/openapi.json`.
 
+Run `npm run format` to apply Prettier to TypeScript and project JSON files, or `npm run format:check` to verify formatting without changing files.
+
 `POST /api/v1/uploads/job-checks` accepts up to 4MB of image bytes as the request body with a bearer token. The limit fits [Vercel's 4.5MB function request limit](https://vercel.com/docs/functions/limitations). It returns `upload_id`; use that ID in a `SCREENSHOT` check. `POST /api/v1/job-checks` accepts `{input_type,content}` for TEXT or URL, or `{input_type:"SCREENSHOT",upload_id}`. Supply a stable `Idempotency-Key` of 8–128 URL-safe characters. Poll `GET /api/v1/job-checks/{id}` after the returned interval. All check results require the same user's token.
 
 ## Verification policy
