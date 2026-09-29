@@ -5,13 +5,15 @@ Hono API built from the supplied Truework backend requirements. Local runtime: N
 ## Local setup
 
 1. Install Node 20 and Docker Desktop. Run `npm ci`.
-2. Start Supabase locally (`supabase start`) and apply `supabase/migrations/0001_core.sql` followed by `supabase/seed.sql` (`supabase db reset` uses the default seed file). The seed contains two [COLAB](https://colab.moha.gov.vn/) recruitment notices checked on 2026-09-29 and a VietnamWorks source registry entry. VietnamWorks has no seeded job because a current original listing was not verified. Closing timestamps stop expired notices from appearing. Recheck the original notices before any demo.
+2. Start Supabase locally (`supabase start`) and apply the migrations in `supabase/migrations/` followed by `supabase/seed.sql` (`supabase db reset` uses the default seed file). The seed contains two [COLAB](https://colab.moha.gov.vn/) recruitment notices checked on 2026-09-29 and a VietnamWorks source registry entry. VietnamWorks has no seeded job because a current original listing was not verified. Closing timestamps stop expired notices from appearing. Recheck the original notices before any demo.
 3. Copy `.env.example` to `.env` and set the local Supabase URL and service role key, OpenAI key, allowed frontend origins, and a random `CRON_SECRET`. Never expose the service role key to the frontend.
 4. Run `npm run dev`, then `npm run build`, `npm test`, and `npm run smoke`. For authenticated smoke checks, set `SMOKE_TOKEN` to a Supabase user access token. API docs: `http://localhost:8787/api/v1/openapi.json`.
 
 Run `npm run format` to apply Prettier to TypeScript and project JSON files, or `npm run format:check` to verify formatting without changing files.
 
 `POST /api/v1/uploads/job-checks` accepts up to 4MB of image bytes as the request body with a bearer token. The limit fits [Vercel's 4.5MB function request limit](https://vercel.com/docs/functions/limitations). It returns `upload_id`; use that ID in a `SCREENSHOT` check. `POST /api/v1/job-checks` accepts `{input_type,content}` for TEXT or URL, or `{input_type:"SCREENSHOT",upload_id}`. Supply a stable `Idempotency-Key` of 8–128 URL-safe characters. Poll `GET /api/v1/job-checks/{id}` after the returned interval. All check results require the same user's token.
+
+Add `?language=english|korean|vietnamese` to `POST /api/v1/job-checks` to choose the report language; it defaults to `english`. The choice is stored with the check, so polling needs no language parameter. A reused idempotency key with a different language returns `IDEMPOTENCY_CONFLICT`. Human-readable report fields use the selected language; machine-readable codes, URLs, proper names, and country codes remain unchanged. Original `raw_text` stays in the private record for evidence and is omitted from the report response. Reports created before this feature are marked `legacy` and retain their original wording.
 
 ## Verification policy
 

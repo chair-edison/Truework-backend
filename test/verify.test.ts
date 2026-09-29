@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { assess, extractionSchema, fetchOffer } from '../src/verify.js';
+import { languages, parseLanguage } from '../src/language.js';
 import { hostOf, matchesDomain, officialJob, safeJob } from '../src/core.js';
 
 const x = {
@@ -58,6 +59,37 @@ describe('domain and provenance', () => {
   });
 });
 describe('verification policy', () => {
+  it('defaults to English and rejects unsupported report languages', () => {
+    expect(parseLanguage(undefined)).toBe('english');
+    expect(parseLanguage('KOREAN')).toBe('korean');
+    expect(() => parseLanguage('french')).toThrow();
+  });
+  it('localizes every human-readable risk and evidence field', () => {
+    const offer = {
+      ...x,
+      raw_text:
+        'Guaranteed high income. Pay a processing fee. Send passport copy. Act now. Contact Telegram. Travel first.',
+      job_duties: null,
+      recruiter: null,
+      recruitment_fee: 'pay required',
+    };
+    for (const language of languages) {
+      const result = assess(offer, { company: null, source: null, original: null }, language);
+      expect(result.risks).toHaveLength(10);
+      expect(result.summary).toBeTruthy();
+      expect(result.evidence.every((item) => item.title && item.description)).toBe(true);
+      expect(result.risks.every((item) => item.explanation)).toBe(true);
+      expect(result.safety_guidance[0]).toBeTruthy();
+      expect(result.disclaimer).toBeTruthy();
+      if (language === 'english') {
+        expect(result.summary).toBe('This offer has signals that need further checking.');
+        expect(result.risks.every((item) => !/[가-힣]/.test(item.explanation))).toBe(true);
+      }
+      if (language === 'korean') expect(result.summary).toBe('확인이 필요한 위험 신호가 있습니다.');
+      if (language === 'vietnamese')
+        expect(result.summary).toBe('Có dấu hiệu rủi ro cần kiểm tra thêm.');
+    }
+  });
   it('does not let unknown low-severity signals override an official match', () => {
     const d = assess({ ...x, recruiter: null }, { company, source, original });
     expect(d.status).toBe('OFFICIAL');

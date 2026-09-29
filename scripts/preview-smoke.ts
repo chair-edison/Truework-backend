@@ -3,6 +3,7 @@ import { writeFileSync, unlinkSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import { db } from '../src/core.js';
+import { copy, type Language } from '../src/language.js';
 
 const base = process.env.PREVIEW_URL?.replace(/\/$/, '');
 if (!base) throw new Error('PREVIEW_URL is required');
@@ -110,6 +111,18 @@ try {
       content:
         'Factory worker position. Duties: assemble and inspect parts. Contact Telegram and pay a registration fee before applying.',
     },
+    {
+      input_type: 'TEXT',
+      language: 'korean',
+      content:
+        'Factory worker position. Duties: assemble and inspect parts. Contact Telegram and pay a registration fee before applying.',
+    },
+    {
+      input_type: 'TEXT',
+      language: 'vietnamese',
+      content:
+        'Factory worker position. Duties: assemble and inspect parts. Contact Telegram and pay a registration fee before applying.',
+    },
     { input_type: 'URL', content: 'https://example.com' },
     {
       input_type: 'URL',
@@ -120,34 +133,77 @@ try {
   ];
   const failures: string[] = [];
   const idempotencyKey = `preview-${crypto.randomUUID()}`;
-  for (const entry of cases) {
+  assert.throws(
+    () => call('/api/v1/job-checks?language=french', token, 'POST', JSON.stringify(cases[0])),
+    /INVALID_INPUT/,
+  );
+  for (const entry of process.env.SMOKE_LANG_ONLY
+    ? cases.filter((item) => item.input_type === 'TEXT')
+    : cases) {
     try {
+      const language = ('language' in entry ? entry.language : undefined) as Language | undefined;
+      const path = `/api/v1/job-checks${language ? `?language=${language}` : ''}`;
+      const key = entry.input_type === 'TEXT' && !language ? idempotencyKey : undefined;
       const made = call(
-        '/api/v1/job-checks',
+        path,
         token,
         'POST',
-        JSON.stringify(entry),
+        JSON.stringify({
+          input_type: entry.input_type,
+          content: 'content' in entry ? entry.content : undefined,
+          upload_id: 'upload_id' in entry ? entry.upload_id : undefined,
+        }),
         false,
-        entry.input_type === 'TEXT' ? idempotencyKey : undefined,
+        key,
       );
-      if (entry.input_type === 'TEXT') {
+      assert.equal(made.language, language ?? 'english');
+      if (key) {
         const repeated = call(
-          '/api/v1/job-checks',
+          path,
           token,
           'POST',
-          JSON.stringify(entry),
+          JSON.stringify({ input_type: entry.input_type, content: entry.content }),
           false,
           idempotencyKey,
         );
         assert.equal(repeated.check_id, made.check_id);
+        assert.throws(
+          () =>
+            call(
+              '/api/v1/job-checks?language=korean',
+              token,
+              'POST',
+              JSON.stringify({ input_type: entry.input_type, content: entry.content }),
+              false,
+              idempotencyKey,
+            ),
+          /IDEMPOTENCY_CONFLICT/,
+        );
       }
       const done = await waitFor(made.check_id, token);
+      assert.equal(done.language, language ?? 'english');
+      assert.equal(
+        done.verification.summary,
+        copy[done.language as Language].summary[
+          done.verification.status as keyof typeof copy.english.summary
+        ],
+      );
+      assert.equal('raw_text' in done.extraction, false);
+      if (language === 'korean') {
+        assert.match(done.explanation, /[가-힣]/);
+        assert.match(done.extraction.job_duties, /[가-힣]/);
+      }
+      if (language === 'vietnamese') {
+        assert.match(done.explanation, /[À-ỹ]/);
+        assert.match(done.extraction.job_duties, /[À-ỹ]/);
+      }
       assert.ok(
         Array.isArray(call(`/api/v1/job-checks/${made.check_id}/alternatives`, token).items),
       );
       console.log(
         JSON.stringify({
           input_type: entry.input_type,
+          language: done.language,
           source: entry.input_type === 'URL' ? entry.content : undefined,
           status: done.status,
           verification_status: done.verification?.status,
