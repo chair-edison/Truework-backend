@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 import type { Context, Next } from 'hono';
 
 export type AppEnv = { Variables: { requestId: string; userId: string; db: SupabaseClient } };
@@ -12,7 +13,7 @@ export function config() {
   if (!url || !key) throw new ApiError(503,'NOT_READY','서비스를 일시적으로 사용할 수 없습니다.',true);
   return {url,key};
 }
-export function db() { const {url,key}=config(); return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}}); }
+export function db() { const {url,key}=config(); return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false},realtime:{transport:WebSocket as any}}); }
 export async function requireAuth(c: Context<AppEnv>, next: Next) {
   const token=c.req.header('authorization')?.match(/^Bearer (\S+)$/i)?.[1];
   if (!token) throw new ApiError(401,'AUTH_REQUIRED','로그인이 필요합니다.');
@@ -39,9 +40,12 @@ export function matchesDomain(host:string|null, domain:string|null|undefined) {
 export function officialJob(job:any, source:any) {
   return !!(source?.active && source?.verification_level==='OFFICIAL' && matchesDomain(hostOf(job.source_url),source.official_domain) && new Date(job.last_verified_at).getTime()>=new Date(source.last_checked_at).getTime());
 }
+export function verifiedEmployerJob(job:any, company:any){
+  return !!(company?.last_checked_at && matchesDomain(hostOf(job.source_url),company.official_domain) && new Date(job.last_verified_at).getTime()>=new Date(company.last_checked_at).getTime());
+}
 export function safeJob(job:any) {
   const source=job.sources; const status=job.verification_status==='OFFICIAL'&&!officialJob(job,source)?'UNVERIFIED':job.verification_status;
-  return {...job,verification_status:status};
+  return {...job,verification_status:status==='VERIFIED_EMPLOYER'&&!verifiedEmployerJob(job,job.companies)?'UNVERIFIED':status};
 }
 export async function rateLimit(c:Context<AppEnv>,scope:string) {
   const d=c.get('db'), id=c.get('userId');
