@@ -150,3 +150,5 @@ app.route('/api/v1/jobs', jobs);
 app.route('/api/v1/users', users);
 app.route('/api/v1/uploads', uploads);
 app.route('/api/v1/job-checks', checks);
+
+export default app;
