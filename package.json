@@ -3,9 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  },
   "scripts": {
     "dev": "node --env-file=.env --import tsx --watch src/local.ts",
     "build": "tsc --noEmit",
+    "format": "prettier --write \"{src,api,scripts,test}/**/*.ts\" package.json tsconfig.json vercel.json",
+    "format:check": "prettier --check \"{src,api,scripts,test}/**/*.ts\" package.json tsconfig.json vercel.json",
     "test": "vitest run",
     "smoke": "tsx scripts/smoke.ts",
     "test:integration": "node --env-file=.env --import tsx scripts/local-integration.ts"
@@ -23,6 +28,7 @@
   "devDependencies": {
     "@types/node": "^20.19.0",
     "@types/ws": "^8.18.1",
+    "prettier": "^3.9.9",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "vitest": "^4.1.11"

@@ -1,5 +1,5 @@
 {
-  "functions": { "api/index.ts": { "maxDuration": 60 } },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
+  "regions": ["sin1"],
+  "functions": { "src/app.ts": { "maxDuration": 60 } },
   "crons": [{ "path": "/api/internal/retention", "schedule": "0 3 * * *" }]
 }
