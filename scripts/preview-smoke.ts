@@ -137,9 +137,12 @@ try {
     () => call('/api/v1/job-checks?language=french', token, 'POST', JSON.stringify(cases[0])),
     /INVALID_INPUT/,
   );
-  for (const entry of process.env.SMOKE_LANG_ONLY
-    ? cases.filter((item) => item.input_type === 'TEXT')
-    : cases) {
+  const selectedCases = process.env.SMOKE_SCREENSHOT_ONLY
+    ? cases.filter((item) => item.input_type === 'SCREENSHOT')
+    : process.env.SMOKE_LANG_ONLY
+      ? cases.filter((item) => item.input_type === 'TEXT')
+      : cases;
+  for (const entry of selectedCases) {
     try {
       const language = ('language' in entry ? entry.language : undefined) as Language | undefined;
       const path = `/api/v1/job-checks${language ? `?language=${language}` : ''}`;

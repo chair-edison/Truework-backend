@@ -28,6 +28,34 @@ export const extractionSchema = z
   })
   .strict();
 export type Extraction = z.infer<typeof extractionSchema>;
+export function sanitizeDbText(value: string): string {
+  let clean = '';
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code === 0) continue;
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        clean += value[i] + value[++i];
+      } else {
+        clean += '\ufffd';
+      }
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      clean += '\ufffd';
+    } else {
+      clean += value[i];
+    }
+  }
+  return clean;
+}
+export function sanitizeExtraction(value: Extraction): Extraction {
+  return Object.fromEntries(
+    Object.entries(value).map(([key, field]) => [
+      key,
+      typeof field === 'string' ? sanitizeDbText(field) : field,
+    ]),
+  ) as Extraction;
+}
 type Evidence = {
   id: string;
   kind: 'POSITIVE' | 'NEGATIVE' | 'UNKNOWN';
@@ -146,8 +174,10 @@ export async function extract(
       ],
     });
     const parsed = JSON.parse(result.choices[0]?.message?.content || '');
-    const value = extractionSchema.parse(
-      input.type === 'SCREENSHOT' ? parsed : { ...parsed, raw_text: input.text?.slice(0, 20000) },
+    const value = sanitizeExtraction(
+      extractionSchema.parse(
+        input.type === 'SCREENSHOT' ? parsed : { ...parsed, raw_text: input.text?.slice(0, 20000) },
+      ),
     );
     return { value, model, usage: result.usage };
   } catch (e) {

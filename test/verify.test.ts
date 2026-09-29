@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { assess, extractionSchema, fetchOffer } from '../src/verify.js';
+import {
+  assess,
+  extractionSchema,
+  fetchOffer,
+  sanitizeDbText,
+  sanitizeExtraction,
+} from '../src/verify.js';
 import { languages, parseLanguage } from '../src/language.js';
 import { hostOf, matchesDomain, officialJob, safeJob } from '../src/core.js';
 
@@ -30,6 +36,18 @@ const source = {
   verification_level: 'OFFICIAL',
 };
 const original = { source_url: x.source_url };
+describe('database-safe extraction', () => {
+  it('removes NUL and replaces unpaired surrogates while preserving valid Unicode', () => {
+    expect(sanitizeDbText('A\u0000B\ud800C\udc00😀한글')).toBe('AB�C�😀한글');
+  });
+  it('sanitizes every extracted string field before JSONB persistence', () => {
+    const cleaned = sanitizeExtraction({ ...x, raw_text: 'OCR\u0000', employer: 'Acme\ud800' });
+    expect(cleaned.raw_text).toBe('OCR');
+    expect(cleaned.employer).toBe('Acme�');
+    expect(cleaned.salary).toBeNull();
+    expect(cleaned.work_scope).toBe('DOMESTIC');
+  });
+});
 describe('domain and provenance', () => {
   it('matches only the same host or a real subdomain', () => {
     expect(matchesDomain(hostOf('https://jobs.example.org/a'), 'example.org')).toBe(true);
