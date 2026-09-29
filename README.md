@@ -9,7 +9,7 @@ Hono API built from the supplied Truework backend requirements. Runtime: Node 20
 3. Copy `.env.example` to `.env` and set the local Supabase URL and service role key, OpenAI key, allowed frontend origins, and a random `CRON_SECRET`. Never expose the service role key to the frontend.
 4. Run `npm run dev`, then `npm run build`, `npm test`, and `npm run smoke`. For authenticated smoke checks, set `SMOKE_TOKEN` to a Supabase user access token. API docs: `http://localhost:8787/api/v1/openapi.json`.
 
-`POST /api/v1/uploads/job-checks` accepts the image bytes as the request body with a bearer token. It returns `upload_id`; use that ID in a `SCREENSHOT` check. `POST /api/v1/job-checks` accepts `{input_type,content}` for TEXT or URL, or `{input_type:"SCREENSHOT",upload_id}`. Supply a stable `Idempotency-Key` of 8–128 URL-safe characters. Poll `GET /api/v1/job-checks/{id}` after the returned interval. All check results require the same user's token.
+`POST /api/v1/uploads/job-checks` accepts up to 4MB of image bytes as the request body with a bearer token. The limit fits [Vercel's 4.5MB function request limit](https://vercel.com/docs/functions/limitations). It returns `upload_id`; use that ID in a `SCREENSHOT` check. `POST /api/v1/job-checks` accepts `{input_type,content}` for TEXT or URL, or `{input_type:"SCREENSHOT",upload_id}`. Supply a stable `Idempotency-Key` of 8–128 URL-safe characters. Poll `GET /api/v1/job-checks/{id}` after the returned interval. All check results require the same user's token.
 
 ## Verification policy
 
@@ -26,4 +26,4 @@ The initial rule set is a transparent keyword and registry policy, not a fraud c
 
 ## Current verification boundary
 
-Automated tests cover the policy, schema validation, provenance, basic error contract, and CORS. A live DB, Auth, Storage, OpenAI integration run requires project credentials. The local environment used for development did not have a running Docker daemon or Supabase credentials, so `supabase db reset` and the three live check journeys could not be completed here.
+Automated tests cover the policy, schema validation, provenance, basic error contract, CORS, and private URL rejection. Local Supabase migration/seed plus DB, Auth, Storage, ownership, and idempotency integration checks passed. No OpenAI API key was available, so the successful TEXT, URL, and SCREENSHOT extraction journeys remain unverified. The integration test confirmed the safe failure path when the model is unavailable.
