@@ -12,7 +12,7 @@ export const openapi={
     '/jobs/{id}/save':{post:{summary:'Save a job',security:[{bearerAuth:[]}],responses:{'200':{description:'Saved'}}},delete:{summary:'Unsave a job',security:[{bearerAuth:[]}],responses:{'200':{description:'Removed'}}}},
     '/users/me/saved-jobs':{get:{summary:'Get own saved jobs',security:[{bearerAuth:[]}],responses:{'200':{description:'Paginated saved jobs'}}}},
     '/users/me/preferences':{get:{summary:'Get own preferences',security:[{bearerAuth:[]}],responses:{'200':{description:'Preferences'}}},put:{summary:'Set own preferences',security:[{bearerAuth:[]}],responses:{'200':{description:'Preferences'}}}},
-    '/uploads/job-checks':{post:{summary:'Upload a private JPEG, PNG, or WebP image as raw request body, maximum 10MB',security:[{bearerAuth:[]}],responses:{'201':{description:'Upload ID and expiry'}}}},
+    '/uploads/job-checks':{post:{summary:'Upload a private JPEG, PNG, or WebP image as raw request body, maximum 4MB',security:[{bearerAuth:[]}],responses:{'201':{description:'Upload ID and expiry'}}}},
     '/job-checks':{post:{summary:'Create a check. Optional Idempotency-Key header.',security:[{bearerAuth:[]}],requestBody:{content:{'application/json':{schema:{$ref:'#/components/schemas/CheckCreate'}}}},responses:{'202':{description:'Check ID and polling interval'}}}},
     '/job-checks/{id}':{get:{summary:'Get own check status and result',security:[{bearerAuth:[]}],responses:{'200':{description:'Progress, failure, or completed report'}}}},
     '/job-checks/{id}/alternatives':{get:{summary:'Get active verified internal alternatives',security:[{bearerAuth:[]}],responses:{'200':{description:'Alternative jobs'}}}},

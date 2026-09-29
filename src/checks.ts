@@ -9,7 +9,9 @@ export const uploads=new Hono<AppEnv>(), checks=new Hono<AppEnv>();
 uploads.use('/*',requireAuth);checks.use('/*',requireAuth);
 uploads.post('/job-checks',async c=>{
   await rateLimit(c,'upload');
-  const raw=await c.req.arrayBuffer();if(raw.byteLength>10*1024*1024)throw new ApiError(413,'FILE_TOO_LARGE','이미지는 10MB 이하여야 합니다.');
+  const contentLength=Number(c.req.header('content-length')||0);
+  if(contentLength>4*1024*1024)throw new ApiError(413,'FILE_TOO_LARGE','이미지는 4MB 이하여야 합니다.');
+  const raw=await c.req.arrayBuffer();if(raw.byteLength>4*1024*1024)throw new ApiError(413,'FILE_TOO_LARGE','이미지는 4MB 이하여야 합니다.');
   if(raw.byteLength<12)throw invalid('file');
   const b=Buffer.from(raw);let mime:string|undefined;
   if(b.subarray(0,3).equals(Buffer.from([0xff,0xd8,0xff])))mime='image/jpeg';
@@ -18,6 +20,7 @@ uploads.post('/job-checks',async c=>{
   if(!mime)throw new ApiError(415,'UNSUPPORTED_IMAGE','JPEG, PNG, WebP 이미지만 지원합니다.');
   let clean:Buffer;
   try {const img=sharp(b,{limitInputPixels:25_000_000});const meta=await img.metadata();if(!meta.width||!meta.height)throw Error();clean=await img.rotate().jpeg({quality:85}).toBuffer();}catch{throw new ApiError(415,'INVALID_IMAGE','이미지 내용을 확인해 주세요.');}
+  if(clean.length>4*1024*1024)throw new ApiError(413,'FILE_TOO_LARGE','이미지는 4MB 이하여야 합니다.');
   const id=crypto.randomUUID(),key=`${c.get('userId')}/${id}.jpg`,client=c.get('db');
   const stored=await client.storage.from('job-checks').upload(key,clean,{contentType:'image/jpeg',upsert:false});assertDb(stored.error);
   const expires_at=new Date(Date.now()+24*3600*1000).toISOString();

@@ -143,7 +143,7 @@ end $$;
 create trigger auth_user_created after insert on auth.users for each row execute function public.new_user();
 
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
-values('job-checks','job-checks',false,10485760,array['image/jpeg','image/png','image/webp'])
+values('job-checks','job-checks',false,4194304,array['image/jpeg','image/png','image/webp'])
 on conflict(id) do nothing;
 
 alter table public.users enable row level security;
