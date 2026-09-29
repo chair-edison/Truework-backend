@@ -1,6 +1,6 @@
 # Truework backend
 
-Hono API built from the supplied Truework backend requirements. Runtime: Node 20, Vercel Functions, Supabase Postgres/Auth/private Storage, OpenAI.
+Hono API built from the supplied Truework backend requirements. Local runtime: Node 20; the staging Vercel project uses Node 24. Services: Vercel Functions, Supabase Postgres/Auth/private Storage, OpenAI.
 
 ## Local setup
 
@@ -21,9 +21,9 @@ The initial rule set is a transparent keyword and registry policy, not a fraud c
 
 1. Create separate Supabase projects for staging and production. Apply the migration, then review and apply the seed. Recheck source URLs and close or deactivate expired jobs. Create a Supabase Auth test user.
 2. Connect this repository to Vercel. Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `ALLOWED_ORIGINS`, and `CRON_SECRET` separately for Preview and Production. Set `ALLOWED_ORIGINS` to exact deployed frontend origins. The function duration is 60 seconds; move checks to a durable queue if real workloads exceed it.
-3. Deploy staging, run `GET /health/live` and `GET /health/ready`, then `SMOKE_BASE_URL=<staging URL> SMOKE_TOKEN=<test token> npm run smoke`. Manually verify TEXT, URL, and SCREENSHOT checks, saved jobs, and alternatives against staging Supabase and OpenAI.
+3. Deploy Preview with `vercel deploy --target preview --yes`. Check `GET /health/live` and `GET /health/ready` using `vercel curl` when Vercel Authentication protects Preview. Run `SMOKE_BASE_URL=<preview URL> SMOKE_TOKEN=<test token> npm run smoke`. To verify actual OpenAI extraction for TEXT, URL, and SCREENSHOT, set `PREVIEW_URL=<preview URL>` and run `node --env-file=.env.staging.local --import tsx scripts/preview-smoke.ts`. The script creates and deletes a temporary Supabase Auth user and upload; `.env.staging.local` must contain the staging Supabase URL and service role key. Check saved jobs and alternatives against staging Supabase.
 4. Deploy production only after staging checks pass. Retain the previous Vercel deployment for rollback. Roll back API deployment first if needed; make schema changes backward compatible and use a forward migration to undo data changes. Daily Vercel Cron deletes uploads after 24 hours and job check records after 30 days.
 
 ## Current verification boundary
 
-Automated tests cover the policy, schema validation, provenance, basic error contract, CORS, and private URL rejection. Local Supabase migration/seed plus DB, Auth, Storage, ownership, and idempotency integration checks passed. No OpenAI API key was available, so the successful TEXT, URL, and SCREENSHOT extraction journeys remain unverified. The integration test confirmed the safe failure path when the model is unavailable.
+Automated tests cover the policy, schema validation, provenance, basic error contract, CORS, and private URL rejection. Local Supabase migration/seed plus DB, Auth, Storage, ownership, and idempotency integration checks passed. The protected Vercel Preview passed live and ready health checks, job listing, and authenticated TEXT, URL (including a COLAB notice), and SCREENSHOT extraction with OpenAI. The temporary test user and upload were removed after the run. The integration test also confirmed the safe failure path when the model is unavailable.
