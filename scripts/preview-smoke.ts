@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, unlinkSync } from 'node:fs';
+import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import { db } from '../src/core.js';
 
@@ -13,8 +14,9 @@ if(created.error||!created.data.user)throw new Error('Could not create test user
 const userId=created.data.user.id;
 let uploadId:string|undefined;
 const imagePath='/private/tmp/truework-preview-check.png';
-function call(path:string,token:string,method='GET',body?:string,image=false):any{
+function call(path:string,token:string,method='GET',body?:string,image=false,idempotencyKey?:string):any{
   const args=['curl',base+path,'--','--silent','--show-error','--request',method,'--header',`Authorization: Bearer ${token}`,'--write-out','\n__STATUS__:%{http_code}'];
+  if(idempotencyKey)args.push('--header',`Idempotency-Key: ${idempotencyKey}`);
   if(body)args.push('--header',image?'Content-Type: image/png':'Content-Type: application/json',image?'--data-binary':'--data',body);
   const output=execFileSync('vercel',args,{encoding:'utf8',maxBuffer:2*1024*1024});
   const match=output.match(/\n__STATUS__:(\d+)\s*$/);
@@ -36,6 +38,21 @@ try{
   const signed=await db().auth.signInWithPassword({email,password});
   if(signed.error||!signed.data.session)throw new Error('Could not sign in test user');
   const token=signed.data.session.access_token;
+  assert.equal(call('/health/live',token).status,'ok');
+  assert.equal(call('/health/ready',token).status,'ready');
+  assert.ok(call('/api/v1/openapi.json',token).openapi);
+  const jobs=call('/api/v1/jobs?limit=5',token);
+  assert.ok(jobs.items.length>=2);
+  const jobId=jobs.items[0].id;
+  assert.equal(call(`/api/v1/jobs/${jobId}`,token).job.id,jobId);
+  assert.equal(call(`/api/v1/jobs/${jobId}/save`,token,'POST').saved,true);
+  assert.equal(call('/api/v1/users/me/saved-jobs',token).items[0].job.id,jobId);
+  assert.equal(call('/api/v1/users/me/preferences',token).preferences.work_scope,'BOTH');
+  assert.equal(call('/api/v1/users/me/preferences',token,'PUT',JSON.stringify({occupations:['Nursing assistant'],locations:['Germany'],work_scope:'OVERSEAS'})).preferences.work_scope,'OVERSEAS');
+  assert.ok(Array.isArray(call('/api/v1/jobs?sort=recommended',token).items));
+  assert.equal(call(`/api/v1/jobs/${jobId}/save`,token,'DELETE').saved,false);
+  assert.equal(call('/api/v1/users/me/saved-jobs',token).items.length,0);
+  console.log(JSON.stringify({catalog:'ok',saved_jobs:'ok',preferences:'ok',openapi:'ok',health:'ok'}));
   const svg='<svg width="800" height="300" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="white"/><text x="30" y="80" font-size="30">Factory worker position</text><text x="30" y="140" font-size="25">Duties: assemble and inspect parts.</text><text x="30" y="200" font-size="25">Contact Telegram. Pay registration fee.</text></svg>';
   writeFileSync(imagePath,await sharp(Buffer.from(svg)).png().toBuffer());
   const uploaded=call('/api/v1/uploads/job-checks',token,'POST','@'+imagePath,true);
@@ -47,10 +64,16 @@ try{
     {input_type:'SCREENSHOT',upload_id:uploadId}
   ];
   const failures:string[]=[];
+  const idempotencyKey=`preview-${crypto.randomUUID()}`;
   for(const entry of cases){
     try{
-      const made=call('/api/v1/job-checks',token,'POST',JSON.stringify(entry));
+      const made=call('/api/v1/job-checks',token,'POST',JSON.stringify(entry),false,entry.input_type==='TEXT'?idempotencyKey:undefined);
+      if(entry.input_type==='TEXT'){
+        const repeated=call('/api/v1/job-checks',token,'POST',JSON.stringify(entry),false,idempotencyKey);
+        assert.equal(repeated.check_id,made.check_id);
+      }
       const done=await waitFor(made.check_id,token);
+      assert.ok(Array.isArray(call(`/api/v1/job-checks/${made.check_id}/alternatives`,token).items));
       console.log(JSON.stringify({input_type:entry.input_type,source:entry.input_type==='URL'?entry.content:undefined,status:done.status,verification_status:done.verification?.status,evidence:done.verification?.evidence?.length}));
     }catch(error){
       failures.push(`${entry.input_type}: ${String(error)}`);
